@@ -1,35 +1,40 @@
 require('dotenv').config();
+
 const express = require('express');
 const mongoose = require('mongoose');
+
 const app = express();
 
-// CORS middleware - IMPORTANT for Docker networking
+
+const cors = require("cors");
+
+
+
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
-  }
+  console.log("METHOD:", req.method);
+  console.log("URL:", req.url);
+  next();
 });
+
+// Middleware
+app.use(
+  cors({
+    origin: 'http://localhost:3000',
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 
-// MongoDB connection with better error handling
+// Database Connection
 const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URL, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
-    console.log("MongoDB connected successfully");
+    await mongoose.connect(process.env.MONGODB_URL);
+    console.log('MongoDB connected successfully');
   } catch (error) {
-    console.error("MongoDB connection error:", error);
-    // Don't exit in production, keep retrying
+    console.error('MongoDB connection error:', error.message);
+
+    // Retry after 5 seconds
     setTimeout(connectDB, 5000);
   }
 };
@@ -39,24 +44,31 @@ connectDB();
 // Routes
 const registerRoute = require('./Routes/register');
 const loginRoute = require('./Routes/login');
-const urlRoute = require('./Routes/url'); 
+const urlRoute = require('./Routes/url');
 
-app.use('/api/auth', registerRoute);  
-app.use('/api/auth', loginRoute);     
+app.use('/api/auth', registerRoute);
+app.use('/api/auth', loginRoute);
 app.use('/', urlRoute);
 
-// Health check endpoint - useful for Docker
+// Health Check
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.status(200).json({
+    status: 'OK',
+    message: 'Server running',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
   });
 });
 
-// Listen on all interfaces (0.0.0.0) for Docker
-const PORT = process.env.PORT || 3000;
+// 404 Handler
+app.use((req, res) => {
+  res.status(404).json({
+    message: 'Route not found',
+  });
+});
+
+// Start Server
+const PORT = process.env.PORT || 8000;
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on http://0.0.0.0:${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });

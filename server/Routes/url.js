@@ -3,8 +3,10 @@ const express = require('express');
 const { nanoid } = require('nanoid');
 const Url = require('../models/Url');
 const auth = require('../middleware/auth');
+const redisClient = require('../config/redis');
 
 const router = express.Router();
+
 
 router.post('/shorten', auth, async (req, res) => {
     const { originalUrl } = req.body;
@@ -29,20 +31,39 @@ router.post('/shorten', auth, async (req, res) => {
     });
 });
 
-router.get('/:shortId', async (req, res) => {
-    const { shortId } = req.params;
+router.get("/:shortId", async (req, res) => {
 
-    try {
-        const url = await Url.findOne({ shortId });
-        if (!url) {
-            return res.status(404).json({ message: 'URL not found' });
-        }
+  const { shortId } = req.params;
 
-        res.redirect(url.originalUrl);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Server error' });
+  const cachedUrl =
+    await redisClient.get(`url:${shortId}`);
+
+  if (cachedUrl) {
+
+    console.log("Cache Hit");
+
+    return res.redirect(cachedUrl);
+  }
+
+  const url =
+    await Url.findOne({ shortId });
+
+  if (!url) {
+    return res.status(404).json({
+      message: "URL not found"
+    });
+  }
+
+  await redisClient.set(
+    `url:${shortId}`,
+    url.originalUrl,
+    {
+      EX: 86400
     }
-});
+  );
 
+  console.log("Cache Miss");
+
+  return res.redirect(url.originalUrl);
+});
 module.exports = router;
